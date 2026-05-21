@@ -1,0 +1,245 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net DEFAULT DENY
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES AND HELPERS ---
+    
+    // Check if user is authenticated with a valid UID
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Verify document IDs to prevent ID Poisoning / Injection attacks
+    function isValidId(id) {
+      return id is string 
+        && id.size() > 0 
+        && id.size() <= 128 
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Access incoming write payload reference
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Access existing document state reference
+    function existing() {
+      return resource.data;
+    }
+
+    // Check if user has authenticated ownership of the parent resource path
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- ENTITY SCHEMA VALIDATORS (THE ANTI-UPDATE GAP) ---
+
+    function isValidVirtualFile(data) {
+      return data.keys().hasAll(['path', 'content', 'language'])
+        && data.keys().size() == 3
+        && data.path is string
+        && data.path.size() > 0
+        && data.path.size() <= 1024
+        && data.content is string
+        && data.content.size() <= 524288 // Max 512KB per file
+        && data.language is string
+        && data.language.size() <= 64;
+    }
+
+    function isValidPlanItem(data) {
+      return data.keys().hasAll(['id', 'label', 'priority', 'status', 'createdAt'])
+        && data.keys().size() >= 5
+        && data.keys().size() <= 6
+        && data.id is string
+        && data.id.size() <= 128
+        && data.label is string
+        && data.label.size() > 0
+        && data.label.size() <= 512
+        && data.priority is string
+        && (data.priority == 'low' || data.priority == 'medium' || data.priority == 'high')
+        && data.status is string
+        && (data.status == 'pending' || data.status == 'in-progress' || data.status == 'done')
+        && data.createdAt is string
+        && data.createdAt.size() <= 128
+        && (!data.keys().contains('dependencies') || (data.dependencies is list && data.dependencies.size() <= 100));
+    }
+
+    function isValidToolItem(data) {
+      return data.keys().hasAll(['id', 'name', 'description', 'active', 'category'])
+        && data.keys().size() >= 5
+        && data.id is string
+        && data.id.size() <= 128
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 256
+        && data.description is string
+        && data.description.size() <= 1024
+        && data.active is bool
+        && data.category is string
+        && data.category.size() <= 128
+        // ping property is optional/dynamic
+        && (!data.keys().contains('ping') || data.ping is string);
+    }
+
+    function isValidMemoryVector(data) {
+      return data.keys().hasAll(['id', 'text', 'agentId', 'timestamp', 'score'])
+        && data.keys().size() == 5
+        && data.id is string
+        && data.id.size() <= 128
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 4096
+        && data.agentId is string
+        && data.agentId.size() <= 128
+        && data.timestamp is string
+        && data.timestamp.size() <= 128
+        && (data.score is int || data.score is float);
+    }
+
+    function isValidAgentPermission(data) {
+      return data.keys().hasAll(['id', 'name', 'role', 'description', 'avatar', 'fileSystemAccess', 'terminalAccess', 'externalAPIAccess'])
+        && data.keys().size() == 8
+        && data.id is string
+        && data.id.size() <= 128
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 128
+        && data.role is string
+        && data.role.size() <= 128
+        && data.description is string
+        && data.description.size() <= 1024
+        && data.avatar is string
+        && data.avatar.size() <= 64
+        && data.fileSystemAccess is bool
+        && data.terminalAccess is bool
+        && data.externalAPIAccess is bool;
+    }
+
+    function isValidAgentCredential(data) {
+      return data.keys().hasAll(['id', 'agentId', 'agentName', 'serviceName', 'tokenValue', 'status', 'lastVerified'])
+        && data.keys().size() == 7
+        && data.id is string
+        && data.id.size() <= 128
+        && data.agentId is string
+        && data.agentId.size() <= 128
+        && data.agentName is string
+        && data.agentName.size() <= 128
+        && data.serviceName is string
+        && data.serviceName.size() > 0
+        && data.serviceName.size() <= 256
+        && data.tokenValue is string
+        && data.tokenValue.size() > 0
+        && data.tokenValue.size() <= 1024
+        && data.status is string
+        && (data.status == 'active' || data.status == 'revoked')
+        && data.lastVerified is string
+        && data.lastVerified.size() <= 128;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['id', 'sender', 'text', 'timestamp'])
+        && data.keys().size() == 4
+        && data.id is string
+        && data.id.size() <= 128
+        && data.sender is string
+        && (data.sender == 'user' || data.sender == 'agent')
+        && data.text is string
+        && data.text.size() <= 8192
+        && data.timestamp is string
+        && data.timestamp.size() <= 128;
+    }
+
+    function isValidSystemLog(data) {
+      return data.keys().hasAll(['text', 'timestamp'])
+        && data.keys().size() == 2
+        && data.text is string
+        && data.text.size() <= 8192
+        && data.timestamp is string
+        && data.timestamp.size() <= 128;
+    }
+
+    // --- COLLECTION BOUNDARIES AND TRANSACTIONS ---
+
+    match /users/{userId} {
+      allow get, write: if isOwner(userId);
+
+      // Workspace files matching path variable limits
+      match /files/{fileId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(fileId) && isValidVirtualFile(incoming());
+        allow update: if isOwner(userId) && isValidId(fileId) && isValidVirtualFile(incoming()) 
+          && incoming().path == existing().path; // IMMUTABLE file paths
+        allow delete: if isOwner(userId) && isValidId(fileId);
+      }
+
+      // Action milestones / planner items
+      match /plan/{itemId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(itemId) && isValidPlanItem(incoming());
+        allow update: if isOwner(userId) && isValidId(itemId) && isValidPlanItem(incoming())
+          && incoming().id == existing().id // IMMUTABLE keys
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if isOwner(userId) && isValidId(itemId);
+      }
+
+      // Interactive custom tools
+      match /tools/{toolId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(toolId) && isValidToolItem(incoming());
+        allow update: if isOwner(userId) && isValidId(toolId) && isValidToolItem(incoming())
+          && incoming().id == existing().id;
+        allow delete: if isOwner(userId) && isValidId(toolId);
+      }
+
+      // Memory and embedded elements
+      match /vectors/{vectorId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(vectorId) && isValidMemoryVector(incoming());
+        allow update: if isOwner(userId) && isValidId(vectorId) && isValidMemoryVector(incoming())
+          && incoming().id == existing().id;
+        allow delete: if isOwner(userId) && isValidId(vectorId);
+      }
+
+      // Security Agent boundaries/permissions maps
+      match /permissions/{permissionId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(permissionId) && isValidAgentPermission(incoming());
+        allow update: if isOwner(userId) && isValidId(permissionId) && isValidAgentPermission(incoming())
+          && incoming().id == existing().id;
+        allow delete: if isOwner(userId) && isValidId(permissionId);
+      }
+
+      // Highly critical client key/token vaults
+      match /credentials/{credentialId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(credentialId) && isValidAgentCredential(incoming());
+        allow update: if isOwner(userId) && isValidId(credentialId) && isValidAgentCredential(incoming())
+          && incoming().id == existing().id
+          && incoming().agentId == existing().agentId; // Immutable Agent Ownership bounds
+        allow delete: if isOwner(userId) && isValidId(credentialId);
+      }
+
+      // Conversational console logging
+      match /chatMessages/{messageId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(messageId) && isValidChatMessage(incoming());
+        allow update: if isOwner(userId) && isValidId(messageId) && isValidChatMessage(incoming())
+          && incoming().id == existing().id;
+        allow delete: if isOwner(userId) && isValidId(messageId);
+      }
+
+      // System execution and telemetry streams
+      match /logs/{logId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(logId) && isValidSystemLog(incoming());
+        allow update: if isOwner(userId) && isValidId(logId) && isValidSystemLog(incoming());
+        allow delete: if isOwner(userId) && isValidId(logId);
+      }
+    }
+  }
+}

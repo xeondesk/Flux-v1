@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Flux Agentic IDE",
+  "description": "Advanced full-stack AI development workspace powered by the FLUX Core Engine orchestration layer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

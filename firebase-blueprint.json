@@ -1,0 +1,146 @@
+{
+  "entities": {
+    "VirtualFile": {
+      "title": "Virtual File",
+      "description": "An individual source file in the virtual workspace filesystem of the IDE.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "Relative workspace file path." },
+        "content": { "type": "string", "description": "String code buffer contents." },
+        "language": { "type": "string", "description": "Syntactic tag name." }
+      },
+      "required": ["path", "content", "language"]
+    },
+    "PlanItem": {
+      "title": "Plan Step",
+      "description": "A progress action step inside the developer orchestration plan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "status": { "type": "string", "enum": ["pending", "in-progress", "done"] },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "label", "priority", "status"]
+    },
+    "ToolItem": {
+      "title": "Tool Integration",
+      "description": "A diagnostic, compiler, database agent or web platform tool configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "active": { "type": "boolean" },
+        "category": { "type": "string" },
+        "ping": { "type": "string" }
+      },
+      "required": ["id", "name", "description", "active"]
+    },
+    "MemoryVector": {
+      "title": "Semantic Memory Vector",
+      "description": "Embedded index of reasoning paths and prompt contexts inside agent memories.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "agentId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "score": { "type": "number" }
+      },
+      "required": ["id", "text", "agentId", "timestamp", "score"]
+    },
+    "AgentPermission": {
+      "title": "Agent Security Policy",
+      "description": "RBAC switches governing file system writes, CLI execution, and API endpoints.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "description": { "type": "string" },
+        "avatar": { "type": "string" },
+        "fileSystemAccess": { "type": "boolean" },
+        "terminalAccess": { "type": "boolean" },
+        "externalAPIAccess": { "type": "boolean" }
+      },
+      "required": ["id", "name", "role", "fileSystemAccess", "terminalAccess", "externalAPIAccess"]
+    },
+    "AgentCredential": {
+      "title": "Agent Secret Credential",
+      "description": "Access token keys, OAuth secrets, or JWT buffers for orchestrating external APIs safely.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "agentId": { "type": "string" },
+        "agentName": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "tokenValue": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "revoked"] },
+        "lastVerified": { "type": "string" }
+      },
+      "required": ["id", "agentId", "agentName", "serviceName", "tokenValue", "status", "lastVerified"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message log",
+      "description": "A conversational history element exchanged inside the IDE console.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "agent"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "sender", "text", "timestamp"]
+    },
+    "SystemLog": {
+      "title": "System Logs Buffer",
+      "description": "Sequential records of compiler and security event details.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/files/{fileId}": {
+      "schema": "VirtualFile",
+      "description": "Custom source directories inside user's private sandboxed virtual IDE."
+    },
+    "/users/{userId}/plan/{itemId}": {
+      "schema": "PlanItem",
+      "description": "Development list items and steps tracking orchestration milestones."
+    },
+    "/users/{userId}/tools/{toolId}": {
+      "schema": "ToolItem",
+      "description": "Custom developer tool status indicators and ping times."
+    },
+    "/users/{userId}/vectors/{vectorId}": {
+      "schema": "MemoryVector",
+      "description": "Agent semantic reference blocks for retrieval-augmented prompt generation."
+    },
+    "/users/{userId}/permissions/{permissionId}": {
+      "schema": "AgentPermission",
+      "description": "Sandboxed role and privilege boundaries governing file IO, terminal scripts, and API ports."
+    },
+    "/users/{userId}/credentials/{credentialId}": {
+      "schema": "AgentCredential",
+      "description": "Protected client API keys, tokens, or JWT buffers used during active proxy connections."
+    },
+    "/users/{userId}/chatMessages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Lobby chat conversations with simulated active orchestration modules."
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Real-time stream of audit records, policy indicators, and runtime triggers."
+    }
+  }
+}
